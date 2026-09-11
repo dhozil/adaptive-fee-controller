@@ -1,5 +1,6 @@
 # { "Depends": "py-genlayer:1jb45aa8ynh2a9c9xn3b7qqh8sm5q93hwfp7jqmwsfhh8jpz09h6" }
 
+import hashlib
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -9,6 +10,7 @@ from genlayer import *
 MAX_PROTOCOLS = 50
 MAX_FEE_HISTORY = 100
 MAX_MARKET_DATA_CHARS = 4000
+MAX_FETCH_BYTES = 65536
 MAX_REASONING_CHARS = 2000
 MAX_PROTOCOL_NAME_CHARS = 100
 
@@ -191,6 +193,27 @@ def _exec_prompt_json(prompt: str) -> dict:
     return res if isinstance(res, dict) else {}
 
 
+def _fetch_market_data(url: str) -> str:
+    """Independently acquire market data from a public API URL. Returns the
+    fetched content as a bounded string. Raises on failure so the adjustment
+    cannot proceed on unverified owner-supplied text."""
+    try:
+        resp = gl.nondet.web.get(url)
+    except Exception:
+        raise gl.vm.UserError(
+            "Contract-side acquisition failed: market data URL is unreachable"
+        )
+    status = getattr(resp, "status", 0)
+    if status != 200:
+        raise gl.vm.UserError(
+            f"Contract-side acquisition failed: URL returned HTTP {status}"
+        )
+    raw = resp.body
+    if len(raw) > MAX_FETCH_BYTES:
+        raw = raw[:MAX_FETCH_BYTES]
+    return raw.decode("utf-8", errors="replace")[:MAX_MARKET_DATA_CHARS]
+
+
 class AdaptiveFeeController(gl.Contract):
     owner: Address
     next_profile_id: u256
@@ -289,7 +312,7 @@ class AdaptiveFeeController(gl.Contract):
     # ------------------------------- fee adjustment ---------------------------
 
     @gl.public.write
-    def adjust_fee(self, profile_id: str, market_data: str) -> dict:
+    def adjust_fee(self, profile_id: str, market_data_url: str, market_context: str) -> dict:
         if profile_id not in self.profiles:
             raise gl.vm.UserError("Profile not found")
         p = self.profiles[profile_id]
@@ -297,20 +320,24 @@ class AdaptiveFeeController(gl.Contract):
             raise gl.vm.UserError("Only the profile owner can adjust the fee")
         if p.status != STATUS_ACTIVE:
             raise gl.vm.UserError("Profile is not active")
-        if not market_data.strip():
-            raise gl.vm.UserError("Market data is required")
-        if len(market_data) > MAX_MARKET_DATA_CHARS:
-            raise gl.vm.UserError("Market data too long")
+        if not market_data_url.strip():
+            raise gl.vm.UserError("Market data URL is required")
+        url = market_data_url.strip()
+        if not (url.startswith("http://") or url.startswith("https://")):
+            raise gl.vm.UserError("Market data URL must start with http(s)://")
+        if len(market_context) > MAX_MARKET_DATA_CHARS:
+            raise gl.vm.UserError("Market context too long")
 
         profile_dict = _profile_to_dict(p)
         step = int(p.adjustment_step_bp)
-        fee_range = max(1, int(p.max_fee_bp) - int(p.min_fee_bp))
-        # Tight absolute tolerance (in bp): validators must agree on materially the
-        # same fee so the accepted value preserves both current and future behavior.
-        tolerance = max(1, fee_range // 100)
 
         def adjust_fn() -> dict:
-            prompt = _build_fee_adjustment_prompt(profile_dict, market_data)
+            fetched_data = _fetch_market_data(url)
+            full_market = f"CONTRACT-FETCHED MARKET DATA:\n{fetched_data}"
+            if market_context.strip():
+                full_market += f"\n\nOWNER CONTEXT:\n{market_context.strip()}"
+
+            prompt = _build_fee_adjustment_prompt(profile_dict, full_market)
             raw_res = _exec_prompt_json(prompt)
             if not raw_res:
                 return {
@@ -323,7 +350,6 @@ class AdaptiveFeeController(gl.Contract):
             except (ValueError, TypeError):
                 new_fee = int(p.current_fee_bp)
             new_fee = max(int(p.min_fee_bp), min(int(p.max_fee_bp), new_fee))
-            # enforce the one-step bound as a safety net
             if abs(new_fee - int(p.current_fee_bp)) > step:
                 new_fee = int(p.current_fee_bp)
             reason = str(raw_res.get("adjustment_reason", ""))[:MAX_REASONING_CHARS]
@@ -347,7 +373,9 @@ class AdaptiveFeeController(gl.Contract):
             except (ValueError, TypeError):
                 return False
             my = adjust_fn()
-            if abs(my["new_fee"] - new_fee) > tolerance:
+            # Exact fee binding: validators must agree on the EXACT consequential
+            # fee result — no tolerance allowed.
+            if my["new_fee"] != new_fee:
                 return False
             return True
 
@@ -366,7 +394,7 @@ class AdaptiveFeeController(gl.Contract):
             old_fee_bp=u256(old_fee),
             new_fee_bp=u256(result["new_fee"]),
             adjustment_reason=result["adjustment_reason"],
-            market_conditions=market_data[:MAX_MARKET_DATA_CHARS],
+            market_conditions=f"URL: {url} | {result['market_summary']}"[:MAX_MARKET_DATA_CHARS],
             timestamp=str(datetime.now()),
             adjusted_by=gl.message.sender_address.as_hex,
         )

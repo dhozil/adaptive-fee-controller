@@ -7,9 +7,9 @@
 ![GenLayer](https://img.shields.io/badge/GenLayer-Intelligent%20Contract-6a4cff)
 ![Python](https://img.shields.io/badge/Python-3.12-3776AB)
 ![Status](https://img.shields.io/badge/status-live%20on%20studionet-2ea44f)
-![Tests](https://img.shields.io/badge/tests-5%20passed-2ea44f)
+![Tests](https://img.shields.io/badge/tests-6%20passed-2ea44f)
 
-[Live Contract](https://explorer-studio.genlayer.com/address/0xd92f959331a3AEDE448CA502d2d67ef646c32cea) ·
+[Live Contract](https://explorer-studio.genlayer.com/address/0x00425a326C32093Da6B10C243203a0B7512D739C) ·
 [GenLayer Docs](https://docs.genlayer.com)
 
 </div>
@@ -24,18 +24,18 @@ Static or formula-based fees can't adapt to volatility, liquidity or demand. Thi
 
 | | |
 |---|---|
-| **Contract** | [AdaptiveFeeController](https://explorer-studio.genlayer.com/address/0xd92f959331a3AEDE448CA502d2d67ef646c32cea) |
-| **Address** | `0xd92f959331a3AEDE448CA502d2d67ef646c32cea` |
+| **Contract** | [AdaptiveFeeController](https://explorer-studio.genlayer.com/address/0x00425a326C32093Da6B10C243203a0B7512D739C) |
+| **Address** | `0x00425a326C32093Da6B10C243203a0B7512D739C` |
 | **Network** | GenLayer studionet (chain `61999`) |
 | **Status** | ✅ deployed + audited on-chain |
 
 ## Highlights
 
-- 📈 **Market-aware** — LLM reads volume, volatility, competition, congestion
+- 📈 **Market-aware** — contract independently fetches market data from a public API URL (`gl.nondet.web.get`), not just owner-supplied text
 - 🎚️ **Basis-point safety** — fees are integers (bp), bounded `[min, max]` and capped to a max step per update
-- 🧮 **Deterministic consensus** — validators must agree on *materially the same* fee (tight 1 bp tolerance), preserving future behavior
-- 🔒 **Owner-only mutation** — Creator (owner) mutes `adjust_fee`, `record_volume`, pause/resume
-- 📚 **Full audit trail** — every adjustment stored with reason + market context
+- 🧮 **Exact consensus** — validators must agree on the EXACT fee value (zero tolerance), preserving current and future behavior
+- 🔒 **Owner-only mutation** — creator can `adjust_fee`, `record_volume`, pause/resume
+- 📚 **Full audit trail** — every adjustment stored with reason + fetched market data
 
 ## How It Works
 
