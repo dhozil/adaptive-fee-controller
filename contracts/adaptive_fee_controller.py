@@ -168,13 +168,13 @@ TASK:
 4. Provide strategic recommendations.
 
 CRITICAL: fee_effectiveness must be an integer between 0 and 100.
+volume_impact must be exactly one of: "positive", "negative", "neutral".
 optimal_fee_range must contain two integers (min bp and max bp).
 
 Respond ONLY with valid JSON:
 {{
     "fee_effectiveness": 85,
-    "volume_impact": "positive|negative|neutral",
-    "recommendations": ["rec1", "rec2"],
+    "volume_impact": "positive",
     "optimal_fee_range": [20, 60]
 }}
 """
@@ -484,7 +484,6 @@ class AdaptiveFeeController(gl.Contract):
             return {
                 "fee_effectiveness": 0,
                 "volume_impact": "neutral",
-                "recommendations": ["No adjustments yet to analyze"],
                 "optimal_fee_range": [int(p.min_fee_bp), int(p.max_fee_bp)],
             }
 
@@ -495,7 +494,6 @@ class AdaptiveFeeController(gl.Contract):
                 return {
                     "fee_effectiveness": 0,
                     "volume_impact": "neutral",
-                    "recommendations": [],
                     "optimal_fee_range": [int(p.min_fee_bp), int(p.max_fee_bp)],
                 }
             try:
@@ -506,10 +504,6 @@ class AdaptiveFeeController(gl.Contract):
             impact = str(raw_res.get("volume_impact", "neutral"))
             if impact not in ("positive", "negative", "neutral"):
                 impact = "neutral"
-            recommendations = raw_res.get("recommendations", [])
-            if not isinstance(recommendations, list):
-                recommendations = []
-            recommendations = [str(x)[:200] for x in recommendations[:5]]
             optimal = raw_res.get("optimal_fee_range", [int(p.min_fee_bp), int(p.max_fee_bp)])
             if not isinstance(optimal, list) or len(optimal) != 2:
                 optimal = [int(p.min_fee_bp), int(p.max_fee_bp)]
@@ -523,7 +517,6 @@ class AdaptiveFeeController(gl.Contract):
             return {
                 "fee_effectiveness": effectiveness,
                 "volume_impact": impact,
-                "recommendations": recommendations,
                 "optimal_fee_range": [lo, hi],
             }
 
@@ -533,9 +526,13 @@ class AdaptiveFeeController(gl.Contract):
             ld = leader_result.calldata
             if not isinstance(ld, dict):
                 return False
-            my = analyze_fn()
-            if abs(my["fee_effectiveness"] - int(ld.get("fee_effectiveness", 0))) > 20:
+            required = ("fee_effectiveness", "volume_impact", "optimal_fee_range")
+            if not all(k in ld for k in required):
                 return False
+            my = analyze_fn()
+            for k in required:
+                if my[k] != ld[k]:
+                    return False
             return True
 
         return gl.vm.run_nondet_unsafe(analyze_fn, validator_fn)

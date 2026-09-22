@@ -9,7 +9,7 @@
 ![Status](https://img.shields.io/badge/status-live%20on%20studionet-2ea44f)
 ![Tests](https://img.shields.io/badge/tests-6%20passed-2ea44f)
 
-[Live Contract](https://explorer-studio.genlayer.com/address/0x00425a326C32093Da6B10C243203a0B7512D739C) ·
+[Live Contract](https://explorer-studio.genlayer.com/address/0xB91cF28C5bF0519065Af21A43131875d867759c5) ·
 [GenLayer Docs](https://docs.genlayer.com)
 
 </div>
@@ -24,8 +24,8 @@ Static or formula-based fees can't adapt to volatility, liquidity or demand. Thi
 
 | | |
 |---|---|
-| **Contract** | [AdaptiveFeeController](https://explorer-studio.genlayer.com/address/0x00425a326C32093Da6B10C243203a0B7512D739C) |
-| **Address** | `0x00425a326C32093Da6B10C243203a0B7512D739C` |
+| **Contract** | [AdaptiveFeeController](https://explorer-studio.genlayer.com/address/0xB91cF28C5bF0519065Af21A43131875d867759c5) |
+| **Address** | `0xB91cF28C5bF0519065Af21A43131875d867759c5` |
 | **Network** | GenLayer studionet (chain `61999`) |
 | **Status** | ✅ deployed + audited on-chain |
 

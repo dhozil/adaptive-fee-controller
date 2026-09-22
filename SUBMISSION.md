@@ -17,7 +17,7 @@ A reusable GenLayer primitive for AI-powered dynamic fee adjustment. Uses LLM re
 - **Reusable primitive**: Foundation for any protocol with dynamic pricing needs
 
 ## How Consensus Is Used
-The contract uses `gl.vm.run_nondet_unsafe()` with a custom validator function. Each validator independently analyzes the market data and recommends a fee. Consensus is reached when validators agree on the fee adjustment within a tolerance band (10% of the fee range).
+The contract uses `gl.vm.run_nondet_unsafe()` with a custom validator function. Each validator independently re-runs the LLM analysis on the same contract-fetched market data. Consensus is reached when validators agree on the exact fee value (no tolerance) and the exact analysis fields (`fee_effectiveness`, `volume_impact`, `optimal_fee_range`). This prevents conflicting analyses from passing.
 
 ## Technical Details
 - Python-based GenLayer Intelligent Contract
@@ -30,7 +30,9 @@ The contract uses `gl.vm.run_nondet_unsafe()` with a custom validator function. 
 DEX fees, lending rates, service pricing, gas optimization - any protocol where fees should adapt to real-time market conditions rather than remain static.
 
 ## Live Deployment
-[To be deployed on Bradbury Testnet]
+- **Address**: `0xB91cF28C5bF0519065Af21A43131875d867759c5`
+- **Network**: GenLayer studionet (chain `61999`)
+- **Explorer**: https://explorer-studio.genlayer.com/address/0xB91cF28C5bF0519065Af21A43131875d867759c5
 
 ## Source Code
 See `contracts/adaptive_fee_controller.py`
