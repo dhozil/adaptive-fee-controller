@@ -30,9 +30,9 @@ The contract uses `gl.vm.run_nondet_unsafe()` with a custom validator function. 
 DEX fees, lending rates, service pricing, gas optimization - any protocol where fees should adapt to real-time market conditions rather than remain static.
 
 ## Live Deployment
-- **Address**: `0xB91cF28C5bF0519065Af21A43131875d867759c5`
+- **Address**: `0xa1CCfD57Ad6b0DB6513799cF215150D488ea5Cf3`
 - **Network**: GenLayer studionet (chain `61999`)
-- **Explorer**: https://explorer-studio.genlayer.com/address/0xB91cF28C5bF0519065Af21A43131875d867759c5
+- **Explorer**: https://explorer-studio.genlayer.com/address/0xa1CCfD57Ad6b0DB6513799cF215150D488ea5Cf3
 
 ## Source Code
 See `contracts/adaptive_fee_controller.py`

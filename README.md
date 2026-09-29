@@ -9,7 +9,7 @@
 ![Status](https://img.shields.io/badge/status-live%20on%20studionet-2ea44f)
 ![Tests](https://img.shields.io/badge/tests-6%20passed-2ea44f)
 
-[Live Contract](https://explorer-studio.genlayer.com/address/0xB91cF28C5bF0519065Af21A43131875d867759c5) ·
+[Live Contract](https://explorer-studio.genlayer.com/address/0xa1CCfD57Ad6b0DB6513799cF215150D488ea5Cf3) ·
 [GenLayer Docs](https://docs.genlayer.com)
 
 </div>
@@ -24,8 +24,8 @@ Static or formula-based fees can't adapt to volatility, liquidity or demand. Thi
 
 | | |
 |---|---|
-| **Contract** | [AdaptiveFeeController](https://explorer-studio.genlayer.com/address/0xB91cF28C5bF0519065Af21A43131875d867759c5) |
-| **Address** | `0xB91cF28C5bF0519065Af21A43131875d867759c5` |
+| **Contract** | [AdaptiveFeeController](https://explorer-studio.genlayer.com/address/0xa1CCfD57Ad6b0DB6513799cF215150D488ea5Cf3) |
+| **Address** | `0xa1CCfD57Ad6b0DB6513799cF215150D488ea5Cf3` |
 | **Network** | GenLayer studionet (chain `61999`) |
 | **Status** | ✅ deployed + audited on-chain |
 
@@ -57,7 +57,8 @@ adjust_fee(profile, market_data) ──► LLM analyzes market
 | Role | Method | Guard |
 |---|---|---|
 | Owner | `create_fee_profile`, `adjust_fee`, `record_volume`, `pause_profile`, `resume_profile` | owner-only |
-| Any | `get_profile`, `get_current_fee`, `get_all_profiles`, `get_profile_adjustments`, `get_protocol_profiles`, `analyze_fee_performance` | read-only |
+| Any | `analyze_fee_performance` | write — eth_call cannot run nondeterministic blocks, so the LLM analysis runs as a transaction and stores its consensus-bound result |
+| Any | `get_profile`, `get_current_fee`, `get_all_profiles`, `get_profile_adjustments`, `get_protocol_profiles`, `get_last_analysis` | read-only |
 
 ## Security Model
 

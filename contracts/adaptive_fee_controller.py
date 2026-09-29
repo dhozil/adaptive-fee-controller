@@ -91,6 +91,14 @@ def _adjustment_to_dict(a: FeeAdjustment) -> dict:
     }
 
 
+def _default_analysis(p: FeeProfile) -> dict:
+    return {
+        "fee_effectiveness": 0,
+        "volume_impact": "neutral",
+        "optimal_fee_range": [int(p.min_fee_bp), int(p.max_fee_bp)],
+    }
+
+
 def _build_fee_adjustment_prompt(profile: dict, market_data: str) -> str:
     return f"""
 You are an adaptive fee controller for a decentralized protocol. Your task is to
@@ -138,14 +146,17 @@ Respond ONLY with valid JSON:
 
 
 def _build_protocol_analysis_prompt(profile: dict, adjustments: list) -> str:
+    # Only deterministic, consensus-bound fields are fed into the analysis:
+    # old_fee / new_fee come from the verified new_fee adjustment, and volume /
+    # fees are owner-recorded integers. The leader-written adjustment_reason and
+    # market_summary are descriptive-only (visible via get_profile_adjustments)
+    # and are deliberately excluded so unverified text cannot influence results.
     adjustments_text = ""
     for a in adjustments[-5:]:
         adjustments_text += f"""
 ---
 Old Fee: {a['old_fee']} bp
 New Fee: {a['new_fee']} bp
-Reason: {a['adjustment_reason']}
-Market: {a['market_conditions']}
 ---
 """
     return f"""
@@ -163,7 +174,7 @@ RECENT ADJUSTMENTS:
 
 TASK:
 1. Analyze the effectiveness of recent fee adjustments.
-2. Identify patterns in market conditions and fee changes.
+2. Identify patterns in fee changes relative to volume and fees collected.
 3. Assess if the current fee is optimal.
 4. Provide strategic recommendations.
 
@@ -222,6 +233,7 @@ class AdaptiveFeeController(gl.Contract):
     adjustments: TreeMap[str, FeeAdjustment]
     profile_adjustments: TreeMap[str, str]
     protocol_profiles: TreeMap[str, str]
+    analyses: TreeMap[str, str]
 
     def __init__(self) -> None:
         self.owner = gl.message.sender_address
@@ -231,6 +243,7 @@ class AdaptiveFeeController(gl.Contract):
         self.adjustments = gl.storage.inmem_allocate(TreeMap[str, FeeAdjustment])
         self.profile_adjustments = gl.storage.inmem_allocate(TreeMap[str, str])
         self.protocol_profiles = gl.storage.inmem_allocate(TreeMap[str, str])
+        self.analyses = gl.storage.inmem_allocate(TreeMap[str, str])
 
     # -------------------------------- profiles --------------------------------
 
@@ -466,8 +479,10 @@ class AdaptiveFeeController(gl.Contract):
             raise gl.vm.UserError("Profile not found")
         return int(self.profiles[profile_id].current_fee_bp)
 
-    @gl.public.view
-    def analyze_fee_performance(self, profile_id: str) -> dict:
+    # GenVM eth_call (view) cannot execute nondeterministic blocks, so the
+    # analysis runs as a write and persists its consensus-bound result.
+    @gl.public.write
+    def analyze_fee_performance(self, profile_id: str) -> None:
         if profile_id not in self.profiles:
             raise gl.vm.UserError("Profile not found")
         p = self.profiles[profile_id]
@@ -481,58 +496,61 @@ class AdaptiveFeeController(gl.Contract):
         ]
 
         if len(adjustments_list) == 0:
-            return {
-                "fee_effectiveness": 0,
-                "volume_impact": "neutral",
-                "optimal_fee_range": [int(p.min_fee_bp), int(p.max_fee_bp)],
-            }
-
-        def analyze_fn() -> dict:
-            prompt = _build_protocol_analysis_prompt(profile_dict, adjustments_list)
-            raw_res = _exec_prompt_json(prompt)
-            if not raw_res:
-                return {
-                    "fee_effectiveness": 0,
-                    "volume_impact": "neutral",
-                    "optimal_fee_range": [int(p.min_fee_bp), int(p.max_fee_bp)],
-                }
-            try:
-                effectiveness = int(float(raw_res.get("fee_effectiveness", 0)))
-            except (ValueError, TypeError):
-                effectiveness = 0
-            effectiveness = max(0, min(100, effectiveness))
-            impact = str(raw_res.get("volume_impact", "neutral"))
-            if impact not in ("positive", "negative", "neutral"):
-                impact = "neutral"
-            optimal = raw_res.get("optimal_fee_range", [int(p.min_fee_bp), int(p.max_fee_bp)])
-            if not isinstance(optimal, list) or len(optimal) != 2:
-                optimal = [int(p.min_fee_bp), int(p.max_fee_bp)]
-            try:
-                lo = max(int(p.min_fee_bp), int(float(optimal[0])))
-                hi = min(int(p.max_fee_bp), int(float(optimal[1])))
-                if lo > hi:
+            analysis = _default_analysis(p)
+        else:
+            def analyze_fn() -> dict:
+                prompt = _build_protocol_analysis_prompt(profile_dict, adjustments_list)
+                raw_res = _exec_prompt_json(prompt)
+                if not raw_res:
+                    return _default_analysis(p)
+                try:
+                    effectiveness = int(float(raw_res.get("fee_effectiveness", 0)))
+                except (ValueError, TypeError):
+                    effectiveness = 0
+                effectiveness = max(0, min(100, effectiveness))
+                impact = str(raw_res.get("volume_impact", "neutral"))
+                if impact not in ("positive", "negative", "neutral"):
+                    impact = "neutral"
+                optimal = raw_res.get("optimal_fee_range", [int(p.min_fee_bp), int(p.max_fee_bp)])
+                if not isinstance(optimal, list) or len(optimal) != 2:
+                    optimal = [int(p.min_fee_bp), int(p.max_fee_bp)]
+                try:
+                    lo = max(int(p.min_fee_bp), int(float(optimal[0])))
+                    hi = min(int(p.max_fee_bp), int(float(optimal[1])))
+                    if lo > hi:
+                        lo, hi = int(p.min_fee_bp), int(p.max_fee_bp)
+                except (ValueError, TypeError):
                     lo, hi = int(p.min_fee_bp), int(p.max_fee_bp)
-            except (ValueError, TypeError):
-                lo, hi = int(p.min_fee_bp), int(p.max_fee_bp)
-            return {
-                "fee_effectiveness": effectiveness,
-                "volume_impact": impact,
-                "optimal_fee_range": [lo, hi],
-            }
+                return {
+                    "fee_effectiveness": effectiveness,
+                    "volume_impact": impact,
+                    "optimal_fee_range": [lo, hi],
+                }
 
-        def validator_fn(leader_result) -> bool:
-            if not isinstance(leader_result, gl.vm.Return):
-                return False
-            ld = leader_result.calldata
-            if not isinstance(ld, dict):
-                return False
-            required = ("fee_effectiveness", "volume_impact", "optimal_fee_range")
-            if not all(k in ld for k in required):
-                return False
-            my = analyze_fn()
-            for k in required:
-                if my[k] != ld[k]:
+            def validator_fn(leader_result) -> bool:
+                if not isinstance(leader_result, gl.vm.Return):
                     return False
-            return True
+                ld = leader_result.calldata
+                if not isinstance(ld, dict):
+                    return False
+                required = ("fee_effectiveness", "volume_impact", "optimal_fee_range")
+                if not all(k in ld for k in required):
+                    return False
+                my = analyze_fn()
+                for k in required:
+                    if my[k] != ld[k]:
+                        return False
+                return True
 
-        return gl.vm.run_nondet_unsafe(analyze_fn, validator_fn)
+            analysis = gl.vm.run_nondet_unsafe(analyze_fn, validator_fn)
+
+        self.analyses[profile_id] = json.dumps(analysis)
+
+    @gl.public.view
+    def get_last_analysis(self, profile_id: str) -> dict:
+        if profile_id not in self.profiles:
+            raise gl.vm.UserError("Profile not found")
+        raw = self.analyses.get(profile_id, "")
+        if not raw:
+            return _default_analysis(self.profiles[profile_id])
+        return json.loads(raw)

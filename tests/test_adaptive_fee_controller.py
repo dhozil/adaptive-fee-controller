@@ -130,3 +130,57 @@ def test_validator_agrees_on_exact_fee(direct_vm, direct_deploy):
     assert ok is True
     bad = direct_vm.run_validator(leader_result={"new_fee": 36}, index=-1)
     assert bad is False
+
+
+def test_analyze_fee_performance(direct_vm, direct_deploy):
+    """Analysis is a write (eth_call cannot run nondet); result is stored and read back."""
+    contract = direct_deploy("contracts/adaptive_fee_controller.py")
+    owner = create_address("owner")
+    pid = _create(contract, direct_vm, owner)
+
+    direct_vm.mock_web(re.escape(MARKET_URL), {"status": 200, "body": MARKET_BODY})
+    direct_vm.mock_llm(re.escape("adaptive fee controller"), FEE_JSON)
+    direct_vm.sender = owner
+    contract.adjust_fee(pid, MARKET_URL, MARKET_CONTEXT)
+
+    ANALYSIS_JSON = json.dumps(
+        {"fee_effectiveness": 85, "volume_impact": "positive", "optimal_fee_range": [20, 60]}
+    )
+    direct_vm.mock_llm(re.escape("fee strategy analyst"), ANALYSIS_JSON)
+    contract.analyze_fee_performance(pid)
+    analysis = contract.get_last_analysis(pid)
+    assert analysis["fee_effectiveness"] == 85
+    assert analysis["volume_impact"] == "positive"
+    assert analysis["optimal_fee_range"] == [20, 60]
+
+    # Validator binds all three fields: exact match passes, any field drift fails.
+    ok = direct_vm.run_validator(
+        leader_result={"fee_effectiveness": 85, "volume_impact": "positive", "optimal_fee_range": [20, 60]},
+        index=-1,
+    )
+    assert ok is True
+    bad = direct_vm.run_validator(
+        leader_result={"fee_effectiveness": 10, "volume_impact": "positive", "optimal_fee_range": [20, 60]},
+        index=-1,
+    )
+    assert bad is False
+
+
+def test_analyze_without_adjustments_is_deterministic(direct_vm, direct_deploy):
+    """No adjustments yet -> stored default, no LLM involved."""
+    contract = direct_deploy("contracts/adaptive_fee_controller.py")
+    owner = create_address("owner")
+    pid = _create(contract, direct_vm, owner)
+
+    direct_vm.sender = owner
+    contract.analyze_fee_performance(pid)
+    analysis = contract.get_last_analysis(pid)
+    assert analysis["fee_effectiveness"] == 0
+    assert analysis["volume_impact"] == "neutral"
+    assert analysis["optimal_fee_range"] == [PROFILE["min_fee"], PROFILE["max_fee"]]
+
+    # Before any analysis the getter returns the same zero-state default.
+    pid2 = _create(contract, direct_vm, owner, profile={**PROFILE, "name": "Second"})
+    empty = contract.get_last_analysis(pid2)
+    assert empty["fee_effectiveness"] == 0
+    assert empty["optimal_fee_range"] == [PROFILE["min_fee"], PROFILE["max_fee"]]
