@@ -19,6 +19,8 @@ A reusable GenLayer primitive for AI-powered dynamic fee adjustment. Uses LLM re
 ## How Consensus Is Used
 The contract uses `gl.vm.run_nondet_unsafe()` with a custom validator function. Each validator independently re-runs the LLM analysis on the same contract-fetched market data. Consensus is reached when validators agree on the exact fee value (no tolerance) and the exact analysis fields (`fee_effectiveness`, `volume_impact`, `optimal_fee_range`). This prevents conflicting analyses from passing.
 
+**Field binding / trust boundary**: the fee-adjustment prompt only feeds contract-fetched market data plus stored integer state, and the validator binds the exact `new_fee`. The performance-analysis prompt is built **only from deterministic stored fields** (old/new/current fee, volume, fees collected) — the leader-written `adjustment_reason` and `market_summary` text remains visible via `get_profile_adjustments` but is excluded from every consequential prompt. Since GenVM eth_call cannot execute nondeterministic blocks, `analyze_fee_performance` runs as a write that stores its consensus-bound result, readable via the `get_last_analysis` view.
+
 ## Technical Details
 - Python-based GenLayer Intelligent Contract
 - Uses `gl.nondet.exec_prompt()` for LLM market analysis
